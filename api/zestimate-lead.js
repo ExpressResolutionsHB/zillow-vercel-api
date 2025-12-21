@@ -7,85 +7,83 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
   if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Use POST" });
-  }
+  if (req.method !== "POST") return res.status(405).json({ error: "Use POST" });
 
   // -------- INPUT --------
   const { street, city, state, email, phone, consent } = req.body || {};
-
-  if (!street || !city || !state) {
-    return res.status(400).json({ error: "Missing address." });
-  }
-
-  if (!email || !phone || !consent) {
-    return res.status(400).json({ error: "Email, phone, and consent are required." });
-  }
+  if (!street || !city || !state) return res.status(400).json({ error: "Missing address." });
+  if (!email || !phone || !consent) return res.status(400).json({ error: "Email/phone/consent required." });
 
   // -------- ENV VARS --------
-  const ZILLOW_API_KEY = process.env.ZILLOW_API_KEY;
-  const ZILLOW_ENDPOINT = process.env.ZILLOW_ENDPOINT;
+  const key = process.env.ZILLOW_API_KEY;
+  const endpoint = process.env.ZILLOW_ENDPOINT;
 
-  if (!ZILLOW_API_KEY || !ZILLOW_ENDPOINT) {
-    return res.status(500).json({ error: "Missing env vars." });
+  if (!key || !endpoint) return res.status(500).json({ error: "Missing env vars." });
+
+  const address = `${street}, ${city}, ${state}`;
+
+  // Helper
+  const tryJson = (raw) => { try { return JSON.parse(raw); } catch { return null; } };
+
+  // Attempt A: GET ?address=
+  async function attemptGet() {
+    const url = new URL(endpoint);
+    url.searchParams.set("address", address);
+
+    const r = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        Accept: "application/json",
+      },
+    });
+
+    const raw = await r.text();
+    return { usedMethod: "GET_QUERY", status: r.status, ok: r.ok, raw, parsed: tryJson(raw) };
   }
 
-  const addressString = `${street}, ${city}, ${state}`;
-
-  // -------- CALL ZILLOW API --------
-  let response;
-  try {
-    response = await fetch(ZILLOW_ENDPOINT, {
-      method: "POST", // adjust to GET if your API requires it
+  // Attempt B: POST JSON body
+  async function attemptPost() {
+    const r = await fetch(endpoint, {
+      method: "POST",
       headers: {
-        "Authorization": `Bearer ${ZILLOW_API_KEY}`,
+        Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
-        "Accept": "application/json"
+        Accept: "application/json",
       },
       body: JSON.stringify({
-        address: addressString,
+        address,
         street,
         city,
-        state
-      })
+        state,
+      }),
     });
-  } catch (err) {
-    return res.status(502).json({
-      error: "Failed to reach Zillow API",
-      details: String(err)
-    });
+
+    const raw = await r.text();
+    return { usedMethod: "POST_JSON", status: r.status, ok: r.ok, raw, parsed: tryJson(raw) };
   }
 
-  const raw = await response.text();
-  let data = {};
-  try { data = JSON.parse(raw); } catch {}
+  // Run attempts (GET then POST)
+  let a;
+  try {
+    a = await attemptGet();
+    if (a.ok) return res.status(200).json({ address, upstream: a });
 
-  if (!response.ok) {
+    const b = await attemptPost();
+    if (b.ok) return res.status(200).json({ address, upstream: b });
+
+    // If both fail, return both responses (THIS IS THE GOLD)
     return res.status(502).json({
-      error: "Zillow API error",
-      status: response.status,
-      response: data || raw
+      error: "Upstream API rejected the request",
+      address,
+      attempts: [a, b],
+      note: "This tells us exactly what the API wants (auth/method/params).",
+    });
+  } catch (e) {
+    return res.status(502).json({
+      error: "Failed to reach upstream endpoint",
+      address,
+      details: String(e?.message || e),
     });
   }
-
-  // -------- MAP RESPONSE --------
-  const zestimate =
-    data?.zestimate ??
-    data?.data?.zestimate ??
-    data?.results?.[0]?.zestimate ??
-    null;
-
-  const rentZestimate =
-    data?.rentZestimate ??
-    data?.data?.rentZestimate ??
-    data?.results?.[0]?.rentZestimate ??
-    null;
-
-  // -------- FINAL RESPONSE --------
-  return res.status(200).json({
-    address: addressString,
-    zestimate,
-    rentZestimate,
-    source: "Zillow API"
-  });
 }
