@@ -1,6 +1,6 @@
 export default async function handler(req, res) {
   // ✅ CHANGE THIS to your Carrot domain later
-  res.setHeader("Access-Control-Allow-Origin", "https://YOURCARROTSITE.com");
+  res.setHeader("Access-Control-Allow-Origin", "https://www.xpressresolutions.com");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   if (req.method === "OPTIONS") return res.status(200).end();
