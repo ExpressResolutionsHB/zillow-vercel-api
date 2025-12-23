@@ -20,7 +20,7 @@ export default async function handler(req, res) {
 
   if (!key || !endpoint) return res.status(500).json({ error: "Missing env vars." });
 
-  const address = `${street}, ${city}, ${state}, ${zip-code}`;
+  const address = `${street}, ${city}, ${state}, ${zip}`;
 
   // Helper
   const tryJson = (raw) => { try { return JSON.parse(raw); } catch { return null; } };
