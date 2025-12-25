@@ -47,9 +47,8 @@ export default async function handler(req, res) {
     const r = await fetch(endpoint, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
+       x-rapidapi-key": key, 
+  "x-rapidapi-host": "zllw-working-api.p.rapidapi.com",
       },
       body: JSON.stringify({
         address,
